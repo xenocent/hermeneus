@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 290px; margin: 0; padding: 14px 16px; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: #111; background: #fff; }
+    h1 { margin: 0 0 12px; font-size: 15px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #host { font-weight: 600; word-break: break-all; }
+    .switch { position: relative; flex: none; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; border-radius: 22px; background: #ccc; cursor: pointer; transition: background .15s; }
+    .slider::before { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    input:checked + .slider { background: #2563eb; }
+    input:checked + .slider::before { transform: translateX(18px); }
+    input:disabled + .slider { opacity: .4; cursor: default; }
+    hr { margin: 14px 0 10px; border: 0; border-top: 1px solid #eee; }
+    label.field { display: block; margin-top: 8px; font-size: 12px; color: #555; }
+    label.field input, label.field select { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; color: #111; background: #fff; }
+    .area { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: #555; }
+    .area b { flex: 1; color: #111; font-weight: 600; }
+    .area button { padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; background: #f6f6f6; font: inherit; cursor: pointer; }
+    .area button:hover { background: #eee; }
+    .area button:disabled { opacity: .4; cursor: default; }
+    #status { min-height: 16px; margin-top: 10px; font-size: 12px; color: #555; }
+    #status.error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Hermeneus</h1>
+  <div class="row">
+    <div>Translate on<br><span id="host">this site</span></div>
+    <label class="switch"><input type="checkbox" id="toggle"><span class="slider"></span></label>
+  </div>
+  <div class="area">Pages: <b id="area">auto-detect</b>
+    <button id="pick" title="Click the part of the page that holds the comic">Pick area</button>
+    <button id="auto" title="Go back to automatic page detection">Auto</button>
+  </div>
+  <hr>
+  <label class="field">Provider
+    <select id="provider">
+      <option value="claude">Claude (Anthropic)</option>
+      <option value="openai">OpenAI</option>
+      <option value="gemini">Gemini (Google)</option>
+      <option value="openrouter">OpenRouter</option>
+    </select>
+  </label>
+  <label class="field">API key
+    <input type="password" id="key" autocomplete="off">
+  </label>
+  <label class="field">Model (must accept images)
+    <input id="model" list="models" autocomplete="off" spellcheck="false">
+    <datalist id="models"></datalist>
+  </label>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

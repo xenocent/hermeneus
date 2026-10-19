@@ -1,0 +1,302 @@
+#mtx-root {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: visible !important;
+  z-index: 2147483000 !important;
+}
+
+#mtx-root .mtx-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* ---------- bubbles (the "cleaner": paper colour + bubble shape) ---------- */
+
+#mtx-root .mtx-bubble {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border-radius: 6px;
+  pointer-events: auto;
+  /* padding is set per bubble in content.js (CSS % padding would follow the page width) */
+}
+
+#mtx-root .mtx-speech,
+#mtx-root .mtx-thought {
+  border-radius: 50%;           /* oval like the bubble, so its outline stays visible */
+}
+
+#mtx-root .mtx-narration,
+#mtx-root .mtx-sign {
+  border-radius: 3px;
+}
+
+#mtx-root .mtx-sfx {
+  background: transparent;
+}
+
+#mtx-root .mtx-bubble.mtx-hidden {
+  background: transparent !important;
+  outline: 1px dashed rgba(59, 130, 246, 0.7);
+}
+
+#mtx-root .mtx-bubble.mtx-hidden .mtx-text {
+  visibility: hidden;
+}
+
+/* ---------- text ---------- */
+
+#mtx-root .mtx-text {
+  max-width: 100%;
+  margin: 0;
+  color: var(--mtx-fg, #111);
+  font-family: "Wild Words", "CC Wild Words", "Anime Ace", "Comic Neue", "Comic Sans MS", "Segoe UI", sans-serif;
+  font-weight: 600;
+  line-height: 1.12;
+  text-align: center;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  outline: none;
+  cursor: text;
+}
+
+#mtx-root .mtx-sfx .mtx-text {
+  font-style: italic;
+  font-weight: 800;
+  -webkit-text-stroke: 0.18em var(--mtx-outline, #fff);
+  paint-order: stroke fill;
+}
+
+#mtx-root .mtx-vertical .mtx-text {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: -0.08em;
+  max-width: none;
+  max-height: 100%;
+}
+
+#mtx-root .mtx-bubble:focus-within {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+/* ---------- adjust toolbar ---------- */
+
+#mtx-root .mtx-toolbar {
+  position: absolute;
+  display: none;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(17, 17, 17, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+#mtx-root .mtx-toolbar.mtx-show {
+  display: flex;
+}
+
+#mtx-root .mtx-toolbar button {
+  all: unset;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 5px;
+  color: #fff;
+  font: 600 13px/24px "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+#mtx-root .mtx-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+#mtx-root .mtx-toolbar button[data-act="move"] { cursor: move; }
+#mtx-root .mtx-toolbar button[data-act="resize"] { cursor: nwse-resize; }
+
+#mtx-root [hidden] {
+  display: none !important;
+}
+
+#mtx-root .mtx-original .mtx-bubble {
+  display: none;
+}
+
+/* ---------- per-page status (top-left of the page) ---------- */
+
+#mtx-root .mtx-status {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: 70%;
+  padding: 5px 10px 6px;
+  border-radius: 8px;
+  background: rgba(17, 17, 17, 0.85);
+  color: #fff;
+  font: 500 12px/1.3 "Segoe UI", system-ui, sans-serif;
+  pointer-events: auto;
+}
+
+#mtx-root .mtx-status-bar,
+#mtx-root .mtx-panel-bar {
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+#mtx-root .mtx-status-bar i,
+#mtx-root .mtx-panel-bar i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: #60a5fa;
+  transition: width 0.4s linear;
+}
+
+#mtx-root .mtx-status-error {
+  background: #b91c1c;
+  cursor: pointer;
+}
+
+/* ---------- chapter progress panel (bottom-right) ---------- */
+
+#mtx-root .mtx-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: none;
+  width: 290px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(17, 17, 17, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  color: #eee;
+  font: 12px/1.4 "Segoe UI", system-ui, sans-serif;
+  pointer-events: auto;
+}
+
+#mtx-root .mtx-panel.mtx-show {
+  display: block;
+}
+
+#mtx-root .mtx-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#mtx-root .mtx-panel-row + .mtx-panel-bar + .mtx-panel-row {
+  margin-top: 8px;
+}
+
+#mtx-root .mtx-panel-count {
+  color: #fff;
+  font-weight: 600;
+}
+
+#mtx-root .mtx-panel-detail,
+#mtx-root .mtx-panel-eta {
+  flex: 1;
+  color: #aaa;
+}
+
+#mtx-root .mtx-panel.mtx-busy .mtx-panel-count::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #f97316;
+  vertical-align: 1px;
+}
+
+#mtx-root .mtx-panel button,
+#mtx-root .mtx-page-tools button {
+  all: unset;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: 600 12px/1.3 "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#mtx-root .mtx-panel button:hover,
+#mtx-root .mtx-page-tools button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Minimised: just the "5/21 pages" pill. */
+#mtx-root .mtx-panel.mtx-min {
+  width: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+#mtx-root .mtx-panel.mtx-min .mtx-panel-detail,
+#mtx-root .mtx-panel.mtx-min .mtx-panel-bar,
+#mtx-root .mtx-panel.mtx-min .mtx-panel-row + .mtx-panel-bar + .mtx-panel-row,
+#mtx-root .mtx-panel.mtx-min button {
+  display: none;
+}
+
+/* ---------- hover tools on a page (top-right) ---------- */
+
+#mtx-root .mtx-page-tools {
+  position: absolute;
+  display: none;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(17, 17, 17, 0.85);
+  pointer-events: auto;
+}
+
+#mtx-root .mtx-page-tools.mtx-show {
+  display: flex;
+}
+
+/* ---------- reader area picker ---------- */
+
+#mtx-picker {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+}
+
+#mtx-picker .mtx-pick-box {
+  position: fixed;
+  display: none;
+  box-sizing: border-box;
+  border: 3px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 4px;
+}
+
+#mtx-picker .mtx-pick-hint {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #fff;
+  font: 600 13px/1.3 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}

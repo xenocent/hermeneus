@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Hermeneus",
+  "version": "0.1.0",
+  "description": "Translates comic pages on any site into editable English bubbles using your own Anthropic API key.",
+  "permissions": ["storage", "unlimitedStorage", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "Hermeneus" }
+}

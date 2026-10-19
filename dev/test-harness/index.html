@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hermeneus test</title>
+  <link rel="stylesheet" href="../../extension/content.css">
+  <style>
+    body { margin: 0; background: #16151d; color: #ccc; font: 14px sans-serif; }
+    header { display: flex; align-items: center; gap: 16px; width: min(720px, 100%); margin: 0 auto; padding: 24px 0; }
+    header img { width: 84px; height: 120px; object-fit: cover; border-radius: 4px; }
+    .reader { display: flex; flex-direction: column; align-items: center; }
+    .reader img { width: min(800px, 100%); display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    Loads real page images into a reader-like layout and runs extension/content.js with a fake
+    `chrome` API, so detection, typesetting, progress and caching can be checked without an API key.
+    Usage: index.html?base=<folder URL ending in />&pages=1,2,3
+    Set window.MOCK['<file name>'] = { bubbles: [...] } before calling startExtension().
+  -->
+  <header>
+    <img id="cover" referrerpolicy="no-referrer" alt="">
+    <div>Test reader: the small cover should be skipped, the pages below translated.</div>
+  </header>
+  <section class="reader" id="reader"></section>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const BASE = params.get('base') || '';
+    const PAGES = (params.get('pages') || '').split(',').filter(Boolean);
+    const reader = document.getElementById('reader');
+    if (PAGES[0]) document.getElementById('cover').src = `${BASE}${PAGES[0]}.jpg`;
+    for (const n of PAGES) {
+      const img = document.createElement('img');
+      img.referrerPolicy = 'no-referrer';
+      img.src = `${BASE}${n}.jpg`;
+      reader.appendChild(img);
+    }
+
+    // Storage survives reloads (sessionStorage) so the refresh-cache path can be tested.
+    window.MOCK = {};
+    window.MOCK_DELAY = 400;
+    const store = JSON.parse(sessionStorage.getItem('mtxStore') || 'null') || { sites: { [location.hostname]: true } };
+    const persist = () => sessionStorage.setItem('mtxStore', JSON.stringify(store));
+    window.apiCalls = 0;
+    const mockChrome = {
+      storage: {
+        local: {
+          get: async (k) => Object.fromEntries((typeof k === 'string' ? [k] : k).filter((x) => x in store).map((x) => [x, structuredClone(store[x])])),
+          set: async (o) => { Object.assign(store, structuredClone(o)); persist(); },
+          remove: async (k) => { delete store[k]; persist(); },
+        },
+        onChanged: { addListener() {} },
+      },
+      runtime: {
+        onMessage: { addListener(fn) { window.sendToContent = fn; } }, // e.g. sendToContent({ type: 'pick' })
+        // Mirrors background.js translateCached: saves to the cache before replying.
+        sendMessage: async (msg) => {
+          window.lastMessage = msg;
+          window.apiCalls++;
+          await new Promise((r) => setTimeout(r, window.MOCK_DELAY));
+          const reply = window.MOCK[msg.src.split('/').pop()] || { bubbles: [], names: [] };
+          const entry = { bubbles: structuredClone(reply.bubbles) };
+          await mockChrome.storage.local.set({ ['tr:' + msg.src]: entry });
+          return entry;
+        },
+      },
+    };
+    window.mtxStore = store;
+    window.startExtension = async () => {
+      const src = await (await fetch('../../extension/content.js')).text();
+      new Function('chrome', src)(mockChrome);
+    };
+  </script>
+</body>
+</html>
