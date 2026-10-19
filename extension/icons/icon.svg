@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Hermeneus icon: an original-text bubble (あ) behind a translated bubble (A). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <ellipse cx="48" cy="46" rx="34" ry="28" fill="#fb923c"/>
+  <path d="M28 64 L18 84 L44 70 Z" fill="#fb923c"/>
+  <text x="48" y="58" font-family="Yu Gothic, Meiryo, Hiragino Sans, Noto Sans CJK JP, sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">あ</text>
+  <ellipse cx="80" cy="80" rx="36" ry="30" fill="#ffffff"/>
+  <path d="M96 104 L110 120 L82 108 Z" fill="#ffffff"/>
+  <text x="80" y="95" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="42" font-weight="800" fill="#312e81" text-anchor="middle">A</text>
+</svg>

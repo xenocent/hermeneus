@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hermeneus background test</title>
+  <style>body { font: 14px/1.5 monospace; background: #111; color: #ddd; padding: 16px; white-space: pre-wrap; }</style>
+</head>
+<body>
+  <!--
+    Runs the real extension/background.js in a page with a fake chrome API and a fake provider,
+    on synthetic pages drawn here: a normal page and a tall webtoon strip. Checks image cropping,
+    tiling, colour sampling and context between tiles. Open the console or call runAll().
+  -->
+  <script>
+    const store = { provider: 'claude', keys: { claude: 'test-key' }, models: {} };
+    let listener;
+    const apiCalls = [];
+
+    const mockChrome = {
+      runtime: { onMessage: { addListener: (fn) => (listener = fn) }, getPlatformInfo() {}, id: 'test' },
+      storage: {
+        local: {
+          get: async (k) => Object.fromEntries((typeof k === 'string' ? [k] : k).filter((x) => x in store).map((x) => [x, structuredClone(store[x])])),
+          set: async (o) => Object.assign(store, structuredClone(o)),
+          remove: async (k) => delete store[k],
+        },
+      },
+      declarativeNetRequest: { updateSessionRules: async () => {} },
+    };
+
+    // Fake Claude: returns one bubble in the middle of whatever image (tile) it receives.
+    async function mockFetch(url, init) {
+      if (String(url).startsWith('data:')) return fetch(url);
+      const body = JSON.parse(init.body);
+      const prompt = body.messages[0].content[1].text;
+      const [, w, h] = prompt.match(/(\d+)x(\d+) image/).map(Number);
+      apiCalls.push({ w, h, prompt, imageBytes: body.messages[0].content[0].source.data.length });
+      const n = apiCalls.length;
+      const json = {
+        bubbles: [{ x0: Math.round(w * 0.3), y0: Math.round(h * 0.45), x1: Math.round(w * 0.7), y1: Math.round(h * 0.55),
+          original: `原文${n}`, english: `line ${n}`, kind: 'speech', vertical: true, size: Math.round(h * 0.02) }],
+        names: [],
+      };
+      return new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(json) }] }), { status: 200 });
+    }
+
+    // Grey page with a white patch wherever the fake model will put a bubble, so colour
+    // sampling only reads white if the crop offsets are right.
+    function drawPage(width, height, tiles) {
+      const c = document.createElement('canvas');
+      c.width = width;
+      c.height = height;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#7a7a7a';
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#ffffff';
+      for (const t of tiles) ctx.fillRect(width * 0.28, t.top + t.height * 0.43, width * 0.44, t.height * 0.14);
+      return c.toDataURL('image/png');
+    }
+
+    const ask = (msg) => new Promise((resolve) => listener(msg, { tab: { url: 'https://reader.example/ch-1' } }, resolve));
+
+    async function runAll() {
+      const src = await (await fetch('../../extension/background.js')).text();
+      new Function('chrome', 'fetch', src)(mockChrome, mockFetch);
+      const out = [];
+      const check = (name, ok, detail = '') => out.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);
+
+      // 1) normal page: one call, white bubble colour, cached afterwards
+      apiCalls.length = 0;
+      const normal = await ask({ type: 'translate', src: 'https://reader.example/1.jpg', dataUrl: drawPage(864, 1200, [{ top: 0, height: 1200 }]), glossaryKey: 'gl:test' });
+      check('normal page: no error', !normal.error, normal.error || '');
+      check('normal page: one model call', apiCalls.length === 1, `calls=${apiCalls.length}`);
+      check('normal page: image sent at native size', apiCalls[0]?.w === 864 && apiCalls[0]?.h === 1200, `${apiCalls[0]?.w}x${apiCalls[0]?.h}`);
+      check('normal page: bubble paper colour sampled white', normal.bubbles?.[0]?.bg === '#ffffff', normal.bubbles?.[0]?.bg);
+      check('normal page: saved to cache', !!store['tr:https://reader.example/1.jpg']);
+      apiCalls.length = 0;
+      await ask({ type: 'translate', src: 'https://reader.example/1.jpg', dataUrl: drawPage(10, 10, []) });
+      check('normal page: second request served from cache', apiCalls.length === 0);
+
+      // 2) webtoon strip: several tiles, colours right in every tile, context carried over
+      const W = 800, H = 6000;
+      const tileH = Math.round(W * 1.5), step = Math.round(tileH * 0.75);
+      const tiles = [];
+      for (let top = 0; top + tileH < H; top += step) tiles.push({ top, height: tileH });
+      tiles.push({ top: H - tileH, height: tileH });
+      apiCalls.length = 0;
+      const strip = await ask({ type: 'translate', src: 'https://reader.example/strip.jpg', dataUrl: drawPage(W, H, tiles) });
+      check('strip: no error', !strip.error, strip.error || '');
+      check('strip: one model call per tile', apiCalls.length === tiles.length, `calls=${apiCalls.length} tiles=${tiles.length}`);
+      check('strip: tiles sent at readable size', apiCalls.every((c) => c.w === W && c.h === tileH), apiCalls.map((c) => `${c.w}x${c.h}`).join(' '));
+      check('strip: one bubble per tile after merging', strip.bubbles?.length === tiles.length, `bubbles=${strip.bubbles?.length}`);
+      check('strip: every bubble sampled white (crop offsets right)', strip.bubbles?.every((b) => b.bg === '#ffffff'), strip.bubbles?.map((b) => b.bg).join(' '));
+      const expectedY = tiles.map((t) => (t.top + t.height * 0.45) / H);
+      check('strip: bubbles mapped back to page positions', strip.bubbles?.every((b, i) => Math.abs(b.y0 - expectedY[i]) < 0.002),
+        strip.bubbles?.map((b) => b.y0.toFixed(4)).join(' '));
+      check('strip: later tiles see earlier lines as context', apiCalls.slice(1).every((c, i) => c.prompt.includes(`line ${i + 1}`)));
+
+      document.body.textContent = out.join('\n');
+      return out;
+    }
+  </script>
+</body>
+</html>

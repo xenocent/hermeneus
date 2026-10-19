@@ -69,7 +69,29 @@ function say(text, isError = false) {
     await saveField('models', modelInput.value.trim());
     say('Model saved.');
   });
+
+  showCache();
+  $('clear').addEventListener('click', async () => {
+    const keys = await translationKeys();
+    if (!keys.length || !confirm(`Delete ${keys.length} saved page translations? Re-reading them will use your API key again.`)) return;
+    await chrome.storage.local.remove(keys);
+    say('Cache cleared.');
+    showCache();
+  });
 })();
+
+// Saved page translations are stored as "tr:<image url>"; names glossaries as "gl:...".
+async function translationKeys() {
+  return Object.keys(await chrome.storage.local.get(null)).filter((k) => k.startsWith('tr:'));
+}
+
+async function showCache() {
+  const count = (await translationKeys()).length;
+  const bytes = await chrome.storage.local.getBytesInUse(null);
+  const size = bytes < 1e6 ? `${Math.round(bytes / 1e3)} KB` : `${(bytes / 1e6).toFixed(1)} MB`;
+  $('cache').textContent = `${count} page${count === 1 ? '' : 's'} · ${size}`;
+  $('clear').disabled = !count;
+}
 
 async function showProvider() {
   const p = providerSel.value;

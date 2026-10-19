@@ -4,16 +4,33 @@ Thanks for helping. The extension is plain JavaScript with no build step: edit t
 `extension/`, then press the reload icon on the extension's card in `chrome://extensions`
 and refresh the reading page.
 
-## Testing without an API key
-
-`dev/test-harness` runs the real `content.js` against real page images with a fake `chrome`
-API, so you can work on detection, typesetting, the progress panel and the cache for free.
+## Unit tests
 
 ```bash
-node dev/test-harness/serve.js
+npm test
 ```
 
-Open `http://localhost:8765/dev/test-harness/index.html?base=<folder URL ending in />&pages=1,2,3`
+`tests/background.test.js` loads the real `extension/background.js` into a sandbox with a fake
+`chrome` and `fetch`. It covers webtoon tiling and merging, coordinates, colour sampling, JSON
+parsing, the cache, and the request format for every provider. CI runs it on every push.
+
+## Testing without an API key
+
+`dev/test-harness` has two pages that run the real extension code with a fake API:
+
+```bash
+npm run dev
+```
+
+(Set `PORT=8766` or similar if 8765 is taken.)
+
+**`background.html`**: runs `background.js` on synthetic pages drawn in the browser (a normal
+page and a 6000px webtoon strip) and checks cropping, tiling, colour sampling, context between
+tiles and the cache. Open `http://localhost:8765/dev/test-harness/background.html` and run
+`await runAll()` in the console.
+
+**`index.html`**: runs `content.js` against real page images. Open
+`http://localhost:8765/dev/test-harness/index.html?base=<folder URL ending in />&pages=1,2,3`
 and in the browser console:
 
 ```js
@@ -29,12 +46,14 @@ reloading the page tests the cache; run `sessionStorage.clear()` for a fresh sta
 
 ## Where things live
 
-- **Provider calls, prompt, JSON schema, cache writes:** `extension/background.js`
+- **Provider calls, prompt, JSON schema, tiling, cache writes:** `extension/background.js`
 - **Page detection, typesetting, toolbar, progress panel, picker:** `extension/content.js`
-- **Popup settings:** `extension/popup.html` and `extension/popup.js`
+- **Popup settings and cache controls:** `extension/popup.html` and `extension/popup.js`
+- **Icons:** `extension/icons/icon.svg` is the source; the PNGs are rendered from it.
 
 ## Pull requests
 
 - Keep the extension dependency-free and buildless.
-- Test on at least one real reading site, and say which one in the PR.
+- Run `npm test`, and test on at least one real reading site (say which one in the PR).
+- Add a line to `CHANGELOG.md` under the unreleased version.
 - Never commit API keys.
