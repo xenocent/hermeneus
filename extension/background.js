@@ -4,6 +4,10 @@
 
 const MAX_EDGE = 1568;     // keeps the image at a size every provider reads without resizing again
 const MAX_PIXELS = 1_150_000;
+const TALL_RATIO = 2.2;    // taller than this (height / width) = webtoon strip, translated in tiles
+const TILE_RATIO = 1.5;    // tile height as a multiple of the strip width
+const TILE_OVERLAP = 0.25; // share of each tile repeated in the next, so a bubble is whole in one of them
+const CONTEXT_LINES = 30;
 
 const PROVIDERS = {
   claude: { defaultModel: 'claude-opus-5-5', coords: 'pixels' },
@@ -123,21 +127,89 @@ async function settings() {
 
 // ---------- translate ----------
 
-async function translate({ src, dataUrl, context }, sender) {
+async function translate({ src, dataUrl, context = {} }, sender) {
   const cfg = await settings();
   const blob = dataUrl ? await (await fetch(dataUrl)).blob() : await fetchImage(src, sender.tab?.url);
-  const img = await shrink(blob);
-  const { coords } = PROVIDERS[cfg.provider];
+  const bmp = await createImageBitmap(blob);
+  try {
+    // Normal pages are one tile. Webtoon strips are cut into overlapping tiles so the text
+    // stays readable at the model's image size; each tile sees the lines of the ones above.
+    const results = [];
+    const names = [];
+    let previous = context.previous || [];
+    for (const tile of planTiles(bmp.width, bmp.height)) {
+      const img = prepare(bmp, tile);
+      const out = await translateImage(cfg, await encode(img), { ...context, previous });
+      results.push({ tile, bubbles: out.bubbles });
+      names.push(...out.names);
+      previous = [...previous, ...out.bubbles.map((b) => [b.original, b.english])].slice(-CONTEXT_LINES);
+    }
+    return { bubbles: mergeTiles(results, bmp.height), names };
+  } finally {
+    bmp.close();
+  }
+}
 
-  const prompt = userText(img, context, coords);
-  const text = await CALL[cfg.provider](cfg, img.data, prompt);
+async function translateImage(cfg, img, context) {
+  const { coords } = PROVIDERS[cfg.provider];
+  const text = await CALL[cfg.provider](cfg, img.data, userText(img, context, coords));
   const out = parseJson(text);
   const scale = coords === 'norm1000' ? { x: 1000, y: 1000 } : { x: img.w, y: img.h };
-
   return {
     bubbles: (out.bubbles || []).map((b) => normalize(b, scale, img)).filter(Boolean),
     names: out.names || [],
   };
+}
+
+// Tiles (in source pixels) covering the image top to bottom.
+function planTiles(width, height) {
+  if (height / width <= TALL_RATIO) return [{ top: 0, height }];
+  const tileH = Math.round(width * TILE_RATIO);
+  const step = Math.round(tileH * (1 - TILE_OVERLAP));
+  const tiles = [];
+  for (let top = 0; top + tileH < height; top += step) tiles.push({ top, height: tileH });
+  tiles.push({ top: height - tileH, height: tileH });
+  return tiles;
+}
+
+// Tile results -> page bubbles. A bubble touching a tile's cut edge is incomplete there; it's
+// dropped when another tile has it whole. A bubble found in two overlapping tiles is kept once.
+function mergeTiles(results, fullHeight) {
+  const EDGE = 0.01;
+  const all = [];
+  results.forEach(({ tile, bubbles }, i) => {
+    for (const b of bubbles) {
+      const cut = (i > 0 && b.y0 < EDGE) || (i < results.length - 1 && b.y1 > 1 - EDGE);
+      all.push({
+        ...b,
+        y0: (tile.top + b.y0 * tile.height) / fullHeight,
+        y1: (tile.top + b.y1 * tile.height) / fullHeight,
+        size: (b.size * tile.height) / fullHeight,
+        cut,
+      });
+    }
+  });
+  const whole = all.filter((b) => !b.cut);
+  const merged = [];
+  for (const b of all) {
+    if (b.cut && whole.some((w) => overlap(w, b) > 0.3)) continue;
+    const dup = merged.find((m) => overlap(m, b) > 0.5);
+    if (dup) {
+      if (area(b) > area(dup)) Object.assign(dup, b);
+      continue;
+    }
+    merged.push(b);
+  }
+  return merged.map(({ cut, ...b }) => b);
+}
+
+const area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+
+// Intersection as a share of the smaller box.
+function overlap(a, b) {
+  const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  return w <= 0 || h <= 0 ? 0 : (w * h) / Math.min(area(a), area(b));
 }
 
 function userText(img, context = {}, coords) {
@@ -209,34 +281,14 @@ function bubbleColors(img, x0, y0, x1, y1) {
 // ---------- providers ----------
 
 const CALL = {
-  async claude({ key, model }, data, prompt) {
-    const res = await request('https://api.anthropic.com/v1/messages', {
-      headers: {
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'server-side-fallback-2026-07-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: {
-        model,
-        max_tokens: 16000,
-        fallbacks: 'default',
-        system: SYSTEM,
-        output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
-              { type: 'text', text: prompt },
-            ],
-          },
-        ],
-      },
-    });
-    if (res.stop_reason === 'refusal') throw new Error('Claude declined to translate this page.');
-    if (res.stop_reason === 'max_tokens') throw new Error('Response was cut off (page has too much text).');
-    return res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  async claude(cfg, data, prompt) {
+    try {
+      return await claudeMessages(cfg, data, prompt, true);
+    } catch (err) {
+      // Keys or proxies without the refusal-fallback beta: ask again without it.
+      if (err.status === 400 && /fallback|beta/i.test(err.message)) return claudeMessages(cfg, data, prompt, false);
+      throw err;
+    }
   },
 
   openai: (cfg, data, prompt) => chatCompletions('https://api.openai.com/v1/chat/completions', cfg, data, prompt),
@@ -257,6 +309,38 @@ const CALL = {
     return (cand.content?.parts || []).map((p) => p.text || '').join('');
   },
 };
+
+// With `fallbacks`, a page Claude declines is retried server-side on another Claude model.
+async function claudeMessages({ key, model }, data, prompt, withFallbacks) {
+  const headers = {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+  if (withFallbacks) headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
+  const res = await request('https://api.anthropic.com/v1/messages', {
+    headers,
+    body: {
+      model,
+      max_tokens: 16000,
+      ...(withFallbacks && { fallbacks: 'default' }),
+      system: SYSTEM,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
+            { type: 'text', text: prompt },
+          ],
+        },
+      ],
+    },
+  });
+  if (res.stop_reason === 'refusal') throw new Error('Claude declined to translate this page.');
+  if (res.stop_reason === 'max_tokens') throw new Error('Response was cut off (page has too much text).');
+  return res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+}
 
 // OpenAI and OpenRouter share the Chat Completions format.
 async function chatCompletions(url, { key, model }, data, prompt) {
@@ -307,10 +391,15 @@ async function request(url, { headers, body, method = 'POST' }) {
       await new Promise((r) => setTimeout(r, wait * 1000));
       continue;
     }
-    if (res.status === 401 || res.status === 403) throw new Error(`API key was rejected (${res.status}). Check it in the popup.`);
-    const err = await res.json().catch(() => null);
-    const detail = err?.error?.message || (Array.isArray(err) ? err[0]?.error?.message : null);
-    throw new Error(detail || `API error ${res.status}`);
+    const reply = await res.json().catch(() => null);
+    const detail = reply?.error?.message || (Array.isArray(reply) ? reply[0]?.error?.message : null);
+    const err = new Error(
+      res.status === 401 || res.status === 403
+        ? `API key was rejected (${res.status}). Check it in the popup.`
+        : detail || `API error ${res.status}`,
+    );
+    err.status = res.status;
+    throw err;
   }
 }
 
@@ -373,20 +462,23 @@ async function setReferer(host, referer) {
   referers.set(host, referer);
 }
 
-async function shrink(blob) {
-  const bmp = await createImageBitmap(blob);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height), Math.sqrt(MAX_PIXELS / (bmp.width * bmp.height)));
-  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+// Crop one tile out of the page and scale it to the model's native size.
+function prepare(bmp, tile) {
+  const sw = bmp.width, sh = tile.height;
+  const scale = Math.min(1, MAX_EDGE / Math.max(sw, sh), Math.sqrt(MAX_PIXELS / (sw * sh)));
+  const w = Math.round(sw * scale), h = Math.round(sh * scale);
   const canvas = new OffscreenCanvas(w, h);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff'; // transparent PNG pages would otherwise turn black in JPEG
   ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(bmp, 0, 0, w, h);
-  bmp.close();
-  const pixels = ctx.getImageData(0, 0, w, h).data;
-  const jpeg = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+  ctx.drawImage(bmp, 0, tile.top, sw, sh, 0, 0, w, h);
+  return { canvas, w, h, pixels: ctx.getImageData(0, 0, w, h).data };
+}
+
+async function encode(img) {
+  const jpeg = await img.canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
   const bytes = new Uint8Array(await jpeg.arrayBuffer());
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return { data: btoa(bin), w, h, pixels };
+  return { ...img, data: btoa(bin) };
 }

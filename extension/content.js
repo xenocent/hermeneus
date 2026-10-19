@@ -251,7 +251,7 @@
         if (src.startsWith('blob:') || src.startsWith('data:')) msg.dataUrl = await readLocal(src);
         result = await chrome.runtime.sendMessage(msg);
         if (!result || result.error) throw new Error(result?.error || 'No reply from the extension.');
-        learnDuration(Date.now() - page.startedAt);
+        learnDuration((Date.now() - page.startedAt) / tilesFor(page.img));
       }
       history = history.filter((entry) => entry.src !== src);
       history.push({ src, lines: result.bubbles.map((b) => [b.original, b.english]) });
@@ -275,6 +275,18 @@
     if (ms < 3000) return; // joined a request that was already almost done
     estimate = Math.round(estimate * 0.7 + ms * 0.3);
     chrome.storage.local.set({ avgMs: estimate });
+  }
+
+  // Webtoon strips are translated in several model calls (same rule as planTiles in background.js).
+  function tilesFor(img) {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || h / w <= 2.2) return 1;
+    const tileH = w * 1.5, step = tileH * 0.75;
+    return Math.ceil((h - tileH) / step) + 1;
+  }
+
+  function expectedMs(page) {
+    return estimate * tilesFor(page.img);
   }
 
   async function buildContext(src) {
@@ -328,8 +340,10 @@
       const el = page.layer.querySelector('.mtx-status');
       if (!el) continue;
       const elapsed = Date.now() - page.startedAt;
-      el.firstChild.textContent = `Translating… ${seconds(elapsed)} / ~${seconds(estimate)}`;
-      el.querySelector('i').style.width = `${Math.min(95, (elapsed / estimate) * 100)}%`;
+      const expected = expectedMs(page);
+      const tiles = tilesFor(page.img);
+      el.firstChild.textContent = `Translating${tiles > 1 ? ` (${tiles} parts)` : ''}… ${seconds(elapsed)} / ~${seconds(expected)}`;
+      el.querySelector('i').style.width = `${Math.min(95, (elapsed / expected) * 100)}%`;
     }
     updatePanel();
   }
@@ -383,8 +397,9 @@
     ].filter(Boolean).join(' · ');
     panel.querySelector('.mtx-panel-bar i').style.width = `${(done / all.length) * 100}%`;
 
-    const running = all.filter((p) => p.state === 'working').reduce((sum, p) => sum + Math.max(0, estimate - (Date.now() - p.startedAt)), 0);
-    const eta = (running + queued * estimate) / CONCURRENCY;
+    const running = all.filter((p) => p.state === 'working').reduce((sum, p) => sum + Math.max(0, expectedMs(p) - (Date.now() - p.startedAt)), 0);
+    const waiting = all.filter((p) => p.state === 'queued').reduce((sum, p) => sum + expectedMs(p), 0);
+    const eta = (running + waiting) / CONCURRENCY;
     panel.querySelector('.mtx-panel-eta').textContent =
       paused ? 'Paused' :
       working + queued ? `~${seconds(eta)} left` :

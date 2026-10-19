@@ -43,6 +43,9 @@ The model list is loaded from each provider's own model endpoint after you enter
   *Auto* goes back to automatic detection.
 - Pages are translated as you scroll near them, top first, two at a time, or all at once
   with **Translate all**.
+- **Webtoon strips**: very tall images are translated in overlapping tiles so small text
+  stays readable; bubbles on tile edges are merged back into one. A strip costs one model
+  call per tile.
 
 **Translation with context**
 - The last 30 translated lines of the chapter and a per-series name glossary are sent with
@@ -76,6 +79,8 @@ The model list is loaded from each provider's own model endpoint after you enter
   Refreshing, reopening the chapter or restarting Chrome reuses it for free.
 - A page that was still translating when you refreshed is finished and saved in the
   background, and the reloaded page joins that request instead of paying twice.
+- The popup shows how many pages are cached and how much space they use. **Clear** deletes
+  saved translations; settings, keys and name glossaries stay.
 
 ## Privacy
 
@@ -92,8 +97,6 @@ The model list is loaded from each provider's own model endpoint after you enter
 ## Known limits
 
 - Readers that draw pages on `<canvas>` (instead of `<img>`) aren't detected.
-- Very tall webtoon strips are shrunk to fit the model's image size, which can make small
-  text hard to read. Normal manga pages are fine.
 - Bubble boxes come from the model, so some will be slightly off. Use ✥ and ⤡ to fix them.
 
 ## Project layout
@@ -101,11 +104,13 @@ The model list is loaded from each provider's own model endpoint after you enter
 ```
 extension/          the Chrome extension (load this folder unpacked)
   manifest.json
-  background.js     image download, provider calls, cache, colour sampling
+  background.js     image download, tiling, provider calls, cache, colour sampling
   content.js        page detection, typesetting, progress panel, picker
   content.css
-  popup.html/.js    toggle, provider, key, model, reader area
-dev/test-harness/   offline test page with a fake API (see CONTRIBUTING.md)
+  popup.html/.js    toggle, provider, key, model, reader area, cache
+  icons/            toolbar icons (icon.svg is the source)
+tests/              unit tests for background.js (npm test)
+dev/test-harness/   offline test pages with a fake API (see CONTRIBUTING.md)
 ```
 
 ## Contributing

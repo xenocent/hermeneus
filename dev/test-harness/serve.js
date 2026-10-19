@@ -5,7 +5,15 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..', '..');
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+const port = Number(process.env.PORT) || 8765;
+const types = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+};
 
 http
   .createServer((req, res) => {
@@ -17,4 +25,4 @@ http
       res.end(data);
     });
   })
-  .listen(8765, () => console.log('http://localhost:8765/dev/test-harness/index.html'));
+  .listen(port, () => console.log(`http://localhost:${port}/dev/test-harness/index.html`));
